@@ -1,86 +1,124 @@
 import streamlit as st
-import pikepdf
+import fitz
+from PIL import Image
 import io
+import pikepdf
 
-st.set_page_config(page_title="PDF Ayır", page_icon="✂️", layout="centered")
+st.set_page_config(page_title="PDF Ayır", page_icon="✂️", layout="wide")
 
-# Sidebar gizle
 st.markdown("""
 <style>
     [data-testid="stSidebar"] {display: none;}
     [data-testid="collapsedControl"] {display: none;}
+    .sayfa-secili {
+        border: 3px solid #27ae60 !important;
+        border-radius: 10px;
+    }
+    .sayfa-normal {
+        border: 2px solid #e0e0e0;
+        border-radius: 10px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 st.title("✂️ PDF Ayır")
-st.markdown("PDF dosyasından istediğin sayfaları ayır ve indir.")
+st.markdown("PDF'i yükle, sayfaları seç ve indir.")
+
+if "secili_sayfalar" not in st.session_state:
+    st.session_state.secili_sayfalar = set()
+if "pdf_bytes" not in st.session_state:
+    st.session_state.pdf_bytes = None
+if "pdf_isim" not in st.session_state:
+    st.session_state.pdf_isim = ""
 
 yuklenen = st.file_uploader("PDF dosyasını seç", type="pdf")
 
 if yuklenen:
-    try:
-        pdf_bytes = yuklenen.read()
-        pdf = pikepdf.open(io.BytesIO(pdf_bytes))
-        toplam_sayfa = len(pdf.pages)
-        pdf.close()
+    if yuklenen.name != st.session_state.pdf_isim:
+        st.session_state.pdf_bytes = yuklenen.read()
+        st.session_state.pdf_isim = yuklenen.name
+        st.session_state.secili_sayfalar = set()
 
-        st.success(f"✅ **{yuklenen.name}** yüklendi — Toplam **{toplam_sayfa}** sayfa")
+if st.session_state.pdf_bytes:
+    doc = fitz.open(stream=st.session_state.pdf_bytes, filetype="pdf")
+    toplam = len(doc.pages)
 
-        st.markdown("### Hangi sayfaları ayırmak istiyorsun?")
-        sayfa_input = st.text_input(
-            "Sayfa numaralarını girin",
-            placeholder="Örn: 1,3,5 veya 2"
-        )
-        st.caption(f"1 ile {toplam_sayfa} arasında sayfa numarası girin, virgülle ayırın.")
+    st.success(f"✅ **{st.session_state.pdf_isim}** — Toplam **{toplam}** sayfa")
 
-        if st.button("✅ Ayır ve İndir", type="primary", use_container_width=True):
-            if not sayfa_input.strip():
-                st.error("Lütfen sayfa numarası girin!")
-            else:
-                sayfalar = []
-                hatali = []
-                for s in sayfa_input.split(","):
-                    s = s.strip()
-                    if s.isdigit():
-                        no = int(s)
-                        if 1 <= no <= toplam_sayfa:
-                            sayfalar.append(no)
-                        else:
-                            hatali.append(s)
-                    else:
-                        hatali.append(s)
+    # Hızlı seçim butonları
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        if st.button("✅ Tümünü Seç"):
+            st.session_state.secili_sayfalar = set(range(1, toplam + 1))
+            st.rerun()
+    with c2:
+        if st.button("❌ Seçimi Temizle"):
+            st.session_state.secili_sayfalar = set()
+            st.rerun()
+    with c3:
+        st.markdown(f"**Seçili: {len(st.session_state.secili_sayfalar)} sayfa**")
 
-                if hatali:
-                    st.warning(f"Geçersiz sayfa numaraları atlandı: {', '.join(hatali)}")
+    st.markdown("---")
+    st.markdown("### 📄 Sayfalara tıklayarak seç")
 
-                if sayfalar:
-                    pdf_in = pikepdf.open(io.BytesIO(pdf_bytes))
-                    yeni_pdf = pikepdf.Pdf.new()
-                    for no in sayfalar:
-                        yeni_pdf.pages.append(pdf_in.pages[no - 1])
-                    pdf_in.close()
+    # Sayfa önizlemeleri — 5 sütun
+    cols_per_row = 5
+    for row_start in range(0, toplam, cols_per_row):
+        cols = st.columns(cols_per_row)
+        for col_idx in range(cols_per_row):
+            sayfa_no = row_start + col_idx + 1
+            if sayfa_no > toplam:
+                break
+            with cols[col_idx]:
+                # Sayfa görselini render et
+                pix = doc.load_page(sayfa_no - 1).get_pixmap(matrix=fitz.Matrix(1.0, 1.0))
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
-                    cikti = io.BytesIO()
-                    yeni_pdf.save(cikti)
-                    yeni_pdf.close()
-                    cikti.seek(0)
+                secili = sayfa_no in st.session_state.secili_sayfalar
 
-                    cikti_adi = f"ayrilan_{yuklenen.name}"
-                    st.download_button(
-                        label=f"⬇️ İndir: {cikti_adi}",
-                        data=cikti,
-                        file_name=cikti_adi,
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
-                    st.success(f"Seçilen sayfalar: {', '.join(str(s) for s in sayfalar)}")
+                # Seçili ise yeşil border efekti
+                if secili:
+                    st.markdown(f'<div style="border:3px solid #27ae60; border-radius:8px; padding:3px;">', unsafe_allow_html=True)
                 else:
-                    st.error("Geçerli sayfa bulunamadı!")
+                    st.markdown(f'<div style="border:2px solid #e0e0e0; border-radius:8px; padding:3px;">', unsafe_allow_html=True)
 
-    except Exception as e:
-        st.error(f"Hata: {e}")
+                st.image(img, use_container_width=True)
+                st.markdown("</div>", unsafe_allow_html=True)
 
-else:
-    st.info("Henüz PDF yüklenmedi. Yukarıdan dosya seç.")
+                # Checkbox ile seçim
+                checked = st.checkbox(
+                    f"Sayfa {sayfa_no}" + (" ✅" if secili else ""),
+                    value=secili,
+                    key=f"sayfa_{sayfa_no}"
+                )
+                if checked and sayfa_no not in st.session_state.secili_sayfalar:
+                    st.session_state.secili_sayfalar.add(sayfa_no)
+                    st.rerun()
+                elif not checked and sayfa_no in st.session_state.secili_sayfalar:
+                    st.session_state.secili_sayfalar.discard(sayfa_no)
+                    st.rerun()
+
+    doc.close()
+
+    st.markdown("---")
+    if st.session_state.secili_sayfalar:
+        secili_siralı = sorted(st.session_state.secili_sayfalar)
+        st.info(f"Seçili sayfalar: {', '.join(str(s) for s in secili_siralı)}")
+
+        if st.button("✅ Seçili Sayfaları Ayır ve İndir", type="primary", use_container_width=True):
+            pdf_in = pikepdf.open(io.BytesIO(st.session_state.pdf_bytes))
+            yeni = pikepdf.Pdf.new()
+            for no in secili_siralı:
+                yeni.pages.append(pdf_in.pages[no - 1])
+            pdf_in.close()
+            buf = io.BytesIO()
+            yeni.save(buf)
+            yeni.close()
+            buf.seek(0)
+            cikti = f"ayrilan_{st.session_state.pdf_isim}"
+            st.download_button("⬇️ İndir: " + cikti, buf, cikti, "application/pdf", use_container_width=True)
+            st.success("Ayırma tamamlandı!")
+    else:
+        st.warning("Henüz sayfa seçilmedi.")
 
 st.caption("Tüm işlemler tarayıcıda yapılır, dosyaların sunucuya kaydedilmez.")

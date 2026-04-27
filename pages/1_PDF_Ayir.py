@@ -1,67 +1,86 @@
+import streamlit as st
 import pikepdf
-import os
-import sys
+import io
 
-def pdf_islem_garanti():
+st.set_page_config(page_title="PDF Ayır", page_icon="✂️", layout="centered")
+
+# Sidebar gizle
+st.markdown("""
+<style>
+    [data-testid="stSidebar"] {display: none;}
+    [data-testid="collapsedControl"] {display: none;}
+</style>
+""", unsafe_allow_html=True)
+
+st.title("✂️ PDF Ayır")
+st.markdown("PDF dosyasından istediğin sayfaları ayır ve indir.")
+
+yuklenen = st.file_uploader("PDF dosyasını seç", type="pdf")
+
+if yuklenen:
     try:
-        # --- DÜZELTME BURADA BAŞLIYOR ---
-        # Eğer program EXE olarak çalışıyorsa sys.executable yolunu kullanır
-        if getattr(sys, 'frozen', False):
-            mevcut_dizin = os.path.dirname(sys.executable)
-        else:
-            mevcut_dizin = os.path.dirname(os.path.abspath(__file__))
-        
-        os.chdir(mevcut_dizin)
-        # --- DÜZELTME BURADA BİTTİ ---
-        
-        print("-" * 35)
-        print(f"Klasör: {mevcut_dizin}")
-        print("-" * 35)
+        pdf_bytes = yuklenen.read()
+        pdf = pikepdf.open(io.BytesIO(pdf_bytes))
+        toplam_sayfa = len(pdf.pages)
+        pdf.close()
 
-        pdf_dosyalari = [f for f in os.listdir() if f.lower().endswith('.pdf')]
-        
-        if not pdf_dosyalari:
-            print("Hata: Klasörde PDF dosyası bulunamadı!")
-            return
+        st.success(f"✅ **{yuklenen.name}** yüklendi — Toplam **{toplam_sayfa}** sayfa")
 
-        for i, dosya in enumerate(pdf_dosyalari, 1):
-            print(f"{i}- {dosya}")
-        
-        secim_input = input("\nDosya numarası seçin: ")
-        if not secim_input.isdigit():
-            print("Hata: Geçersiz seçim!")
-            return
-            
-        secim = int(secim_input)
-        secilen_dosya = pdf_dosyalari[secim - 1]
-        
-        sayfa_input = input("Hangi sayfayı/sayfaları ayırmak istiyorsunuz? (Örn: 54 veya 1,2,5): ")
-        alinacak_sayfalar = [int(s.strip()) for s in sayfa_input.split(',') if s.strip().isdigit()]
+        st.markdown("### Hangi sayfaları ayırmak istiyorsun?")
+        sayfa_input = st.text_input(
+            "Sayfa numaralarını girin",
+            placeholder="Örn: 1,3,5 veya 2"
+        )
+        st.caption(f"1 ile {toplam_sayfa} arasında sayfa numarası girin, virgülle ayırın.")
 
-        if not alinacak_sayfalar:
-            print("Hata: Sayfa numarası girmediniz!")
-            return
-
-        with pikepdf.open(secilen_dosya) as pdf:
-            yeni_pdf = pikepdf.Pdf.new()
-            
-            for s_no in alinacak_sayfalar:
-                if 1 <= s_no <= len(pdf.pages):
-                    yeni_pdf.pages.append(pdf.pages[s_no - 1])
-                else:
-                    print(f"Uyarı: {s_no}. sayfa belgede mevcut değil.")
-
-            if len(yeni_pdf.pages) > 0:
-                cikti_adi = f"ayrilan_{secilen_dosya}"
-                yeni_pdf.save(cikti_adi)
-                print(f"\nBaşarılı! Dosya kaydedildi: {cikti_adi}")
+        if st.button("✅ Ayır ve İndir", type="primary", use_container_width=True):
+            if not sayfa_input.strip():
+                st.error("Lütfen sayfa numarası girin!")
             else:
-                print("\nHata: Kaydedilecek geçerli sayfa bulunamadı.")
+                sayfalar = []
+                hatali = []
+                for s in sayfa_input.split(","):
+                    s = s.strip()
+                    if s.isdigit():
+                        no = int(s)
+                        if 1 <= no <= toplam_sayfa:
+                            sayfalar.append(no)
+                        else:
+                            hatali.append(s)
+                    else:
+                        hatali.append(s)
+
+                if hatali:
+                    st.warning(f"Geçersiz sayfa numaraları atlandı: {', '.join(hatali)}")
+
+                if sayfalar:
+                    pdf_in = pikepdf.open(io.BytesIO(pdf_bytes))
+                    yeni_pdf = pikepdf.Pdf.new()
+                    for no in sayfalar:
+                        yeni_pdf.pages.append(pdf_in.pages[no - 1])
+                    pdf_in.close()
+
+                    cikti = io.BytesIO()
+                    yeni_pdf.save(cikti)
+                    yeni_pdf.close()
+                    cikti.seek(0)
+
+                    cikti_adi = f"ayrilan_{yuklenen.name}"
+                    st.download_button(
+                        label=f"⬇️ İndir: {cikti_adi}",
+                        data=cikti,
+                        file_name=cikti_adi,
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+                    st.success(f"Seçilen sayfalar: {', '.join(str(s) for s in sayfalar)}")
+                else:
+                    st.error("Geçerli sayfa bulunamadı!")
 
     except Exception as e:
-        print(f"\n!!! HATA OLUŞTU !!!\nDetay: {e}")
+        st.error(f"Hata: {e}")
 
-if __name__ == "__main__":
-    pdf_islem_garanti()
-    print("\n" + "="*35)
-    input("Kapatmak için Enter'a basın...")
+else:
+    st.info("Henüz PDF yüklenmedi. Yukarıdan dosya seç.")
+
+st.caption("Tüm işlemler tarayıcıda yapılır, dosyaların sunucuya kaydedilmez.")

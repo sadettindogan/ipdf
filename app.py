@@ -8,17 +8,9 @@ st.set_page_config(
 
 st.title("📄 iPDF")
 st.markdown("### PDF araçları, tek yerde.")
-st.markdown("---")
+st.markdown("Soldaki menüden bir araç seç:")
 
-col1, col2 = st.columns(2)
+st.info("✂️ **PDF Ayır** — Büyük PDF'i sayfa sayfa böl")
+st.info("🔗 **PDF Birleştir** — Birden fazla PDF'i tek dosyada topla")
 
-with col1:
-    st.page_link("pages/1_PDF_Ayir.py", label="✂️ PDF Ayır", use_container_width=True)
-    st.caption("Büyük PDF'i sayfa sayfa böl")
-
-with col2:
-    st.page_link("pages/2_PDF_Birlestir.py", label="🔗 PDF Birleştir", use_container_width=True)
-    st.caption("Birden fazla PDF'i tek dosyada topla")
-
-st.markdown("---")
 st.caption("Tüm işlemler tarayıcında yapılır, dosyaların sunucuya kaydedilmez.")
